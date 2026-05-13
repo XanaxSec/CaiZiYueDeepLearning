@@ -4,6 +4,11 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+try:
+    from mamba_ssm import Mamba
+except ImportError:
+    Mamba = None
+
 
 class ConvBNAct(nn.Sequential):
     def __init__(
@@ -89,6 +94,36 @@ class DirectionalSequenceExpert(nn.Module):
 
         vertical = x.permute(0, 3, 1, 2).reshape(bsz * width, channels, height)
         vertical = self.v_conv(vertical).reshape(bsz, width, channels, height).permute(0, 2, 3, 1)
+        return self.proj(x + horizontal + vertical)
+
+
+class FusionMambaBlock(nn.Module):
+    """Mamba block for fused dense features, scanning rows and columns separately."""
+
+    def __init__(self, channels: int, d_state: int = 16, d_conv: int = 4, expand: int = 2) -> None:
+        super().__init__()
+        if Mamba is None:
+            raise ImportError(
+                "FusionMambaBlock requires mamba-ssm. "
+                "Install it with: pip install \"mamba-ssm[causal-conv1d]\" --no-build-isolation"
+            )
+        self.h_norm = nn.LayerNorm(channels)
+        self.v_norm = nn.LayerNorm(channels)
+        self.h_mamba = Mamba(d_model=channels, d_state=d_state, d_conv=d_conv, expand=expand)
+        self.v_mamba = Mamba(d_model=channels, d_state=d_state, d_conv=d_conv, expand=expand)
+        self.proj = ConvBNAct(channels, channels, kernel_size=1, padding=0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        bsz, channels, height, width = x.shape
+
+        horizontal = x.permute(0, 2, 3, 1).reshape(bsz * height, width, channels)
+        horizontal = self.h_mamba(self.h_norm(horizontal))
+        horizontal = horizontal.reshape(bsz, height, width, channels).permute(0, 3, 1, 2)
+
+        vertical = x.permute(0, 3, 2, 1).reshape(bsz * width, height, channels)
+        vertical = self.v_mamba(self.v_norm(vertical))
+        vertical = vertical.reshape(bsz, width, height, channels).permute(0, 3, 2, 1)
+
         return self.proj(x + horizontal + vertical)
 
 

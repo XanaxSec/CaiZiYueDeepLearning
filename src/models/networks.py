@@ -4,7 +4,7 @@ from typing import Dict, List
 import torch
 from torch import nn
 
-from .moe import ConvBNAct, MoEBlock
+from .moe import ConvBNAct, FusionMambaBlock, MoEBlock
 
 
 class ResidualConvBlock(nn.Module):
@@ -62,6 +62,7 @@ class TeacherHSMS(nn.Module):
             nn.Sigmoid(),
         )
         self.fuse = ConvBNAct(base_channels * 2, base_channels, kernel_size=1, padding=0)
+        self.fusion_mamba = FusionMambaBlock(base_channels)
         self.moe1 = MoEBlock(base_channels, num_experts=num_experts, top_k=top_k, dropout=dropout)
         self.context = ResidualConvBlock(base_channels, dilation=2)
         self.moe2 = MoEBlock(base_channels, num_experts=num_experts, top_k=top_k, dropout=dropout)
@@ -73,6 +74,7 @@ class TeacherHSMS(nn.Module):
         gate = self.gate(torch.cat([hs_feat, ms_feat], dim=1))
         gated = gate * hs_feat + (1.0 - gate) * ms_feat
         fused = self.fuse(torch.cat([gated, hs_feat + ms_feat], dim=1))
+        fused = self.fusion_mamba(fused)
         x, aux1 = self.moe1(fused)
         x = self.context(x)
         x, aux2 = self.moe2(x)
@@ -130,6 +132,7 @@ class StudentMSMoE(nn.Module):
             nn.Sigmoid(),
         )
         self.fuse = ConvBNAct(base_channels * 2, base_channels, kernel_size=1, padding=0)
+        self.fusion_mamba = FusionMambaBlock(base_channels)
         self.moe1 = MoEBlock(base_channels, num_experts=num_experts, top_k=top_k, dropout=dropout)
         self.context = ResidualConvBlock(base_channels, dilation=2)
         self.moe2 = MoEBlock(base_channels, num_experts=num_experts, top_k=top_k, dropout=dropout)
@@ -141,6 +144,7 @@ class StudentMSMoE(nn.Module):
         gate = self.gate(torch.cat([ms_feat, hs_like], dim=1))
         fused = gate * hs_like + (1.0 - gate) * ms_feat
         x = self.fuse(torch.cat([fused, ms_feat + hs_like], dim=1))
+        x = self.fusion_mamba(x)
         x, aux1 = self.moe1(x)
         x = self.context(x)
         x, aux2 = self.moe2(x)
