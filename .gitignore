@@ -1,0 +1,68 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+conda-env/
+*.egg-info/
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs
+logs/
+log/
+*.log
+*.out
+*.err
+
+# Training outputs
+outputs/
+runs/
+results/
+work_dirs/
+checkpoints/
+weights/
+save/
+saved_models/
+
+# Model weights
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.bin
+*.safetensors
+
+# Dataset files
+data/
+dataset/
+datasets/
+*.mat
+*.tif
+*.tiff
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.csv
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/

@@ -1,0 +1,72 @@
+seed: 42
+
+data:
+  root: .
+  hs_path: houstonHS.mat
+  ms_path: houstonMS.mat
+  train_label_path: TRHouston.mat
+  test_label_path: TE.mat
+  hs_key: houstonHS
+  ms_key: houstonMS
+  train_label_key: TRHouston
+  test_label_key: TE
+  num_classes: 15
+  ignore_index: 255
+  patch_size: 41
+
+train:
+  epochs: 300
+  batch_size: 64
+  samples_per_epoch: 15000
+  num_workers: 0
+  balanced_sampling: true
+  augment: true
+  grad_clip_norm: 5.0
+
+model:
+  teacher_variant: base
+  norm: group
+  spectral_groups: 8
+  patch_size_recommendation: 41
+  base_channels: 64
+  hs_reduced_channels: 32
+  num_experts: 4
+  top_k: 2
+  dropout: 0.1
+
+optim:
+  lr: 0.001
+  weight_decay: 0.0001
+  min_lr: 0.000001
+
+loss:
+  ce: 1.0
+  dice: 0.5
+  focal: 0.5
+  focal_gamma: 2.0
+  use_class_weights: true
+  moe_balance: 0.01
+  boundary: 0.2
+  uncertainty: 0.5
+
+distillation:
+  temperature: 4.0
+  logit: 1.0
+  feature: 1.0
+  prototype: 0.5
+  router: 0.1
+
+inference:
+  tile_size: 256
+  stride: 192
+
+validation:
+  enabled: true
+  split: test
+  strategy: interval
+  metric: mIoU
+  interval: 1
+
+paths:
+  checkpoint_dir: checkpoints
+  output_dir: outputs
