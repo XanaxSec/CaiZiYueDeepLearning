@@ -6,7 +6,7 @@ import torch
 
 from src.data import compute_class_weights, load_houston_arrays, make_train_loader
 from src.losses import supervised_loss
-from src.models.networks import TeacherHSMS
+from src.models.networks import build_teacher_model
 from src.train_utils import (
     build_optimizer,
     build_scheduler,
@@ -40,16 +40,10 @@ def main() -> None:
     loader = make_train_loader(config, arrays)
     num_classes = config["data"]["num_classes"]
     ignore_index = config["data"]["ignore_index"]
-    model_cfg = config["model"]
-    model = TeacherHSMS(
+    model = build_teacher_model(
+        config,
         hs_channels=arrays["hs"].shape[2],
         ms_channels=arrays["ms"].shape[2],
-        num_classes=num_classes,
-        base_channels=model_cfg["base_channels"],
-        hs_reduced_channels=model_cfg["hs_reduced_channels"],
-        num_experts=model_cfg["num_experts"],
-        top_k=model_cfg["top_k"],
-        dropout=model_cfg["dropout"],
     ).to(device)
     print(f"Training TeacherHSMS on {device}. Trainable parameters: {count_parameters(model):,}")
 

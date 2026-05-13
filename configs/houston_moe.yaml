@@ -30,6 +30,11 @@ model:
   patch_size_recommendation: 41
   base_channels: 64
   hs_reduced_channels: 32
+  hs_spectral_type: mamba
+  hs_mamba_dim: 16
+  hs_mamba_d_state: 16
+  hs_mamba_d_conv: 4
+  hs_mamba_expand: 2
   num_experts: 4
   top_k: 2
   dropout: 0.1
@@ -59,6 +64,8 @@ distillation:
 inference:
   tile_size: 256
   stride: 192
+  teacher_tile_size: 41
+  teacher_stride: 20
 
 validation:
   enabled: true

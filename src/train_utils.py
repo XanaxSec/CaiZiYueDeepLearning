@@ -39,6 +39,16 @@ def validation_metric_name(config: Dict) -> str:
     return str(config.get("validation", {}).get("metric", "mIoU"))
 
 
+def inference_window_config(config: Dict, model_kind: str) -> Tuple[int, int]:
+    inference_cfg = config.get("inference", {})
+    if model_kind == "teacher":
+        patch_size = int(config["data"].get("patch_size", inference_cfg.get("tile_size", 256)))
+        tile_size = int(inference_cfg.get("teacher_tile_size", patch_size))
+        stride = int(inference_cfg.get("teacher_stride", max(tile_size // 2, 1)))
+        return tile_size, stride
+    return int(inference_cfg.get("tile_size", 256)), int(inference_cfg.get("stride", 192))
+
+
 def should_validate_epoch(epoch: int, total_epochs: int, config: Dict) -> bool:
     return ValidationScheduler(config, total_epochs).should_validate(epoch)
 
@@ -86,15 +96,15 @@ def evaluate_on_te(
     device: torch.device,
     model_kind: str,
 ) -> Tuple[Dict, float]:
-    inference_cfg = config.get("inference", {})
     hs = arrays["hs"] if model_kind == "teacher" else None
+    tile_size, stride = inference_window_config(config, model_kind)
     pred = predict_full_image(
         model,
         arrays["ms"],
         device=device,
         hs=hs,
-        tile_size=inference_cfg.get("tile_size", 256),
-        stride=inference_cfg.get("stride", 192),
+        tile_size=tile_size,
+        stride=stride,
     )
     num_classes = config["data"]["num_classes"]
     ignore_index = config["data"]["ignore_index"]

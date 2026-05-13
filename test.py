@@ -9,6 +9,7 @@ import torch
 from src.data import colorize_prediction, load_houston_arrays, map_labels, predict_full_image
 from src.metrics import compute_metrics, format_metrics
 from src.models.networks import MSBaseline, StudentMSMoE, build_teacher_model, teacher_config_from_checkpoint
+from src.train_utils import inference_window_config
 from src.utils import ensure_dir, get_device, load_config, load_model_state, seed_everything
 
 
@@ -57,15 +58,15 @@ def main() -> None:
     model = build_model(args.model, arrays, config, args.ckpt, device).to(device)
     load_model_state(model, args.ckpt, device)
 
-    inference_cfg = config.get("inference", {})
     hs = arrays["hs"] if args.model == "teacher" else None
+    tile_size, stride = inference_window_config(config, args.model)
     pred = predict_full_image(
         model,
         arrays["ms"],
         device=device,
         hs=hs,
-        tile_size=inference_cfg.get("tile_size", 256),
-        stride=inference_cfg.get("stride", 192),
+        tile_size=tile_size,
+        stride=stride,
     )
 
     num_classes = config["data"]["num_classes"]

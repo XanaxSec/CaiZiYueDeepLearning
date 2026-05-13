@@ -32,6 +32,59 @@ class Stem(nn.Module):
         return self.net(x)
 
 
+class SpectralMambaGate(nn.Module):
+    def __init__(
+        self,
+        hs_channels: int,
+        mamba_dim: int = 16,
+        d_state: int = 16,
+        d_conv: int = 4,
+        expand: int = 2,
+    ) -> None:
+        super().__init__()
+        try:
+            from mamba_ssm import Mamba
+        except ImportError as exc:
+            raise ImportError(
+                "hs_spectral_type='mamba' requires the real mamba_ssm package. "
+                "Install mamba_ssm in the training environment before training the teacher."
+            ) from exc
+
+        self.hs_channels = hs_channels
+        self.in_proj = nn.Linear(1, mamba_dim)
+        self.mamba = Mamba(d_model=mamba_dim, d_state=d_state, d_conv=d_conv, expand=expand)
+        self.gate_proj = nn.Linear(mamba_dim, 1)
+
+    def forward(self, hs: torch.Tensor) -> torch.Tensor:
+        if hs.shape[1] != self.hs_channels:
+            raise ValueError(f"Expected HS input with {self.hs_channels} channels, got {hs.shape[1]}.")
+        spectral_sequence = hs.mean(dim=(2, 3)).unsqueeze(-1)
+        gate = torch.sigmoid(self.gate_proj(self.mamba(self.in_proj(spectral_sequence))))
+        return hs * gate.unsqueeze(-1)
+
+
+def _build_hs_spectral_gate(
+    hs_spectral_type: str,
+    hs_channels: int,
+    hs_mamba_dim: int,
+    hs_mamba_d_state: int,
+    hs_mamba_d_conv: int,
+    hs_mamba_expand: int,
+) -> nn.Module:
+    spectral_type = str(hs_spectral_type or "none").lower()
+    if spectral_type in {"none", "identity", "off"}:
+        return nn.Identity()
+    if spectral_type == "mamba":
+        return SpectralMambaGate(
+            hs_channels=hs_channels,
+            mamba_dim=hs_mamba_dim,
+            d_state=hs_mamba_d_state,
+            d_conv=hs_mamba_d_conv,
+            expand=hs_mamba_expand,
+        )
+    raise ValueError(f"Unsupported hs_spectral_type: {hs_spectral_type}")
+
+
 def _collect_outputs(logits: torch.Tensor, feature: torch.Tensor, aux_list: List[Dict[str, torch.Tensor]]) -> Dict:
     balance = feature.new_tensor(0.0)
     routers = []
@@ -52,8 +105,21 @@ class TeacherHSMS(nn.Module):
         num_experts: int = 4,
         top_k: int = 2,
         dropout: float = 0.1,
+        hs_spectral_type: str = "none",
+        hs_mamba_dim: int = 16,
+        hs_mamba_d_state: int = 16,
+        hs_mamba_d_conv: int = 4,
+        hs_mamba_expand: int = 2,
     ) -> None:
         super().__init__()
+        self.hs_spectral = _build_hs_spectral_gate(
+            hs_spectral_type=hs_spectral_type,
+            hs_channels=hs_channels,
+            hs_mamba_dim=hs_mamba_dim,
+            hs_mamba_d_state=hs_mamba_d_state,
+            hs_mamba_d_conv=hs_mamba_d_conv,
+            hs_mamba_expand=hs_mamba_expand,
+        )
         self.hs_reduce = ConvBNAct(hs_channels, hs_reduced_channels, kernel_size=1, padding=0)
         self.hs_stem = Stem(hs_reduced_channels, base_channels)
         self.ms_stem = Stem(ms_channels, base_channels)
@@ -68,6 +134,7 @@ class TeacherHSMS(nn.Module):
         self.classifier = nn.Conv2d(base_channels, num_classes, kernel_size=1)
 
     def forward(self, hs: torch.Tensor, ms: torch.Tensor) -> Dict:
+        hs = self.hs_spectral(hs)
         hs_feat = self.hs_stem(self.hs_reduce(hs))
         ms_feat = self.ms_stem(ms)
         gate = self.gate(torch.cat([hs_feat, ms_feat], dim=1))
@@ -95,6 +162,11 @@ class TeacherHSMSPlus(TeacherHSMS):
         dropout: float = 0.1,
         norm: str = "group",
         spectral_groups: int = 8,
+        hs_spectral_type: str = "none",
+        hs_mamba_dim: int = 16,
+        hs_mamba_d_state: int = 16,
+        hs_mamba_d_conv: int = 4,
+        hs_mamba_expand: int = 2,
     ) -> None:
         _ = (norm, spectral_groups)
         super().__init__(
@@ -106,6 +178,11 @@ class TeacherHSMSPlus(TeacherHSMS):
             num_experts=num_experts,
             top_k=top_k,
             dropout=dropout,
+            hs_spectral_type=hs_spectral_type,
+            hs_mamba_dim=hs_mamba_dim,
+            hs_mamba_d_state=hs_mamba_d_state,
+            hs_mamba_d_conv=hs_mamba_d_conv,
+            hs_mamba_expand=hs_mamba_expand,
         )
 
 
@@ -181,6 +258,11 @@ def build_teacher_model(config: Dict, hs_channels: int, ms_channels: int) -> nn.
         num_experts=model_cfg["num_experts"],
         top_k=model_cfg["top_k"],
         dropout=model_cfg["dropout"],
+        hs_spectral_type=model_cfg.get("hs_spectral_type", "none"),
+        hs_mamba_dim=model_cfg.get("hs_mamba_dim", 16),
+        hs_mamba_d_state=model_cfg.get("hs_mamba_d_state", 16),
+        hs_mamba_d_conv=model_cfg.get("hs_mamba_d_conv", 4),
+        hs_mamba_expand=model_cfg.get("hs_mamba_expand", 2),
     )
     return TeacherHSMS(**common)
 
