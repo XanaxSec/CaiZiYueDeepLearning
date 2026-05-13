@@ -6,7 +6,7 @@ import torch
 
 from src.data import compute_class_weights, load_houston_arrays, make_train_loader
 from src.losses import distillation_loss, supervised_loss
-from src.models.networks import StudentMSMoE, build_teacher_model, teacher_config_from_checkpoint
+from src.models.networks import StudentMSMoE, build_teacher_model, get_input_mapping_type, teacher_config_from_checkpoint
 from src.train_utils import (
     ValidationScheduler,
     build_optimizer,
@@ -44,6 +44,14 @@ def main() -> None:
 
     teacher_ckpt = torch.load(args.teacher, map_location=device)
     teacher_config = teacher_config_from_checkpoint(config, teacher_ckpt if isinstance(teacher_ckpt, dict) else {})
+    teacher_mapping_type = get_input_mapping_type(teacher_config.get("model", {}).get("input_mapping"))
+    student_mapping_type = get_input_mapping_type(model_cfg.get("input_mapping"))
+    if teacher_mapping_type != student_mapping_type:
+        raise ValueError(
+            "Teacher and student input mappings differ "
+            f"({teacher_mapping_type} vs {student_mapping_type}). "
+            "Retrain the teacher with the current input_mapping before student distillation."
+        )
     teacher = build_teacher_model(
         teacher_config,
         hs_channels=arrays["hs"].shape[2],
@@ -61,6 +69,7 @@ def main() -> None:
         num_experts=model_cfg["num_experts"],
         top_k=model_cfg["top_k"],
         dropout=model_cfg["dropout"],
+        input_mapping=model_cfg.get("input_mapping"),
     ).to(device)
     print(f"Training StudentMSMoE on {device}. Trainable parameters: {count_parameters(student):,}")
     print(f"Loaded frozen teacher from {args.teacher}")

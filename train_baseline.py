@@ -44,6 +44,7 @@ def main() -> None:
         ms_channels=arrays["ms"].shape[2],
         num_classes=num_classes,
         base_channels=config["model"]["base_channels"],
+        input_mapping=config["model"].get("input_mapping"),
     ).to(device)
     print(f"Training MSBaseline on {device}. Trainable parameters: {count_parameters(model):,}")
 

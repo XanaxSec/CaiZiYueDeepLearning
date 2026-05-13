@@ -50,6 +50,7 @@ def main() -> None:
         num_experts=model_cfg["num_experts"],
         top_k=model_cfg["top_k"],
         dropout=model_cfg["dropout"],
+        input_mapping=model_cfg.get("input_mapping"),
     ).to(device)
     print(f"Training TeacherHSMS on {device}. Trainable parameters: {count_parameters(model):,}")
 
